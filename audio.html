@@ -236,37 +236,34 @@ canvas {
 </div>
 
 <script>
-let currentStep = 0;
-const STEPS = 16;
-let isEngineScheduled = false;
-
-let loadedAudioBuffer = null;
-let currentAudioPlayer = null;
-
-const NOTES = ["C3", "D3", "E3", "F3", "G3", "A3", "B3", "C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"];
-const SAMPLERS = {};
-
+/* ---------- UPDATED SAMPLE INITIALIZER WITH FIXED ABSOLUTE PATHS ---------- */
 function initSamplers() {
-  const baseUrl = "https://tonejs.github.io/audio/";
+  // Hardcoded absolute base path directly targeting Tone.js's remote asset repository
+  const absoluteBase = "https://tonejs.github.io/audio/";
 
   SAMPLERS.piano = new Tone.Sampler({
-    urls: { C4: "samsung-piano/C4.mp3" }
+    urls: { C4: "samsung-piano/C4.mp3" },
+    baseUrl: absoluteBase
   }).toDestination();
 
   SAMPLERS.guitar = new Tone.Sampler({
-    urls: { C4: "casio/A1.mp3" }
+    urls: { C4: "casio/A1.mp3" },
+    baseUrl: absoluteBase
   }).toDestination();
 
   SAMPLERS.violin = new Tone.Sampler({
-    urls: { C4: "berklee/violin_c4_long.mp3" }
+    urls: { C4: "berklee/violin_c4_long.mp3" },
+    baseUrl: absoluteBase
   }).toDestination();
 
   SAMPLERS.flute = new Tone.Sampler({
-    urls: { C5: "berklee/flute_c5_long.mp3" }
+    urls: { C5: "berklee/flute_c5_long.mp3" },
+    baseUrl: absoluteBase
   }).toDestination();
 
   SAMPLERS.trumpet = new Tone.Sampler({
-    urls: { C4: "berklee/trumpet_c4_long.mp3" }
+    urls: { C4: "berklee/trumpet_c4_long.mp3" },
+    baseUrl: absoluteBase
   }).toDestination();
 
   SAMPLERS.drums = new Tone.Sampler({
@@ -274,11 +271,13 @@ function initSamplers() {
       C1: "drum-samples/CR78/kick.mp3",
       D1: "drum-samples/CR78/snare.mp3",
       E1: "drum-samples/CR78/hihat.mp3"
-    }
+    },
+    baseUrl: absoluteBase
   }).toDestination();
 
-  // SAFETY GATE: Fires ONLY when all remote audio file chunks are safely compiled
+  // SAFETY LOADING GATE
   Tone.loaded().then(() => {
+    // Hide the blocker screen smoothly once everything is successfully buffered
     document.getElementById("loadingOverlay").style.opacity = "0";
     setTimeout(() => {
       document.getElementById("loadingOverlay").style.display = "none";
@@ -286,209 +285,11 @@ function initSamplers() {
     
     document.getElementById("status").textContent = "Ready";
     startTransportScheduling();
+  }).catch(err => {
+    document.getElementById("status").textContent = "Error downloading audio banks.";
+    console.error("Sampler loading stalled:", err);
   });
 }
-
-function mkMel(note="C4"){
-  return Array.from({length:STEPS},()=>({active:false,note}));
-}
-
-const TRACKS = [
-  {id:"kick", name:"Kick Drum", kind:"perc", type:"C1", inst:"drums", steps:Array(STEPS).fill(false)},
-  {id:"snare", name:"Snare Drum", kind:"perc", type:"D1", inst:"drums", steps:Array(STEPS).fill(false)},
-  {id:"hihat", name:"Hi-Hat", kind:"perc", type:"E1", inst:"drums", steps:Array(STEPS).fill(false)},
-  {id:"piano", name:"Acoustic Piano", kind:"mel", inst:"piano", steps:mkMel("C4")},
-  {id:"guitar", name:"Nylon Guitar", kind:"mel", inst:"guitar", steps:mkMel("E3")},
-  {id:"violin", name:"Symphonic Violin", kind:"mel", inst:"violin", steps:mkMel("A4")},
-  {id:"flute", name:"Concert Flute", kind:"mel", inst:"flute", steps:mkMel("C5")},
-  {id:"trumpet", name:"Classic Trumpet", kind:"mel", inst:"trumpet", steps:mkMel("G4")}
-];
-
-/* ---------- AUDACITY LINEAR PLAYER ---------- */
-document.getElementById("audioLoader").onchange = async function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  document.getElementById("status").textContent = "Decoding file data...";
-  const reader = new FileReader();
-  reader.onload = async function(evt) {
-    try {
-      loadedAudioBuffer = new Tone.ToneAudioBuffer(evt.target.result, () => {
-        document.getElementById("fileNameDisplay").textContent = `Linear Backing File: ${file.name}`;
-        document.getElementById("status").textContent = "Waveform imported.";
-        drawTrackWaveform(loadedAudioBuffer.getChannelData(0));
-      });
-    } catch(err) {
-      document.getElementById("status").textContent = "Decoding failed.";
-    }
-  };
-  reader.readAsArrayBuffer(file);
-};
-
-function drawTrackWaveform(channelData) {
-  const canvas = document.getElementById("waveformCanvas");
-  const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#020408";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const step = Math.ceil(channelData.length / canvas.width);
-  const amp = canvas.height / 2;
-
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = "#10b981";
-  ctx.beginPath();
-  ctx.moveTo(0, amp);
-
-  for (let i = 0; i < canvas.width; i++) {
-    let min = 1.0; let max = -1.0;
-    for (let j = 0; j < step; j++) {
-      let datum = channelData[i * step + j];
-      if (datum < min) min = datum;
-      if (datum > max) max = datum;
-    }
-    ctx.lineTo(i, amp + min * amp);
-    ctx.lineTo(i, amp + max * amp);
-  }
-  ctx.stroke();
-}
-
-/* ---------- LOOPS & TRANSPORT ---------- */
-function startTransportScheduling() {
-  if (isEngineScheduled) return;
-  
-  Tone.Transport.scheduleRepeat((time) => {
-    // Sync UI playhead transitions safely via the browser drawing engine
-    Tone.Draw.schedule(() => {
-      document.querySelectorAll(".step").forEach(s => s.classList.remove("current-playhead"));
-      TRACKS.forEach(t => {
-        const rowIdx = TRACKS.indexOf(t);
-        const el = document.querySelectorAll(".matrix-row")[rowIdx].querySelectorAll(".step")[currentStep];
-        if (el) el.classList.add("current-playhead");
-      });
-    }, time);
-
-    // Audio-safe clock execution block
-    TRACKS.forEach(t => {
-      const step = t.steps[currentStep];
-      if (t.kind === "perc" && step) {
-        SAMPLERS[t.inst].triggerAttackRelease(t.type, "8n", time);
-      }
-      if (t.kind === "mel" && step.active) {
-        SAMPLERS[t.inst].triggerAttackRelease(step.note, "4n", time);
-      }
-    });
-
-    currentStep = (currentStep + 1) % STEPS;
-  }, "16n");
-
-  Tone.Transport.bpm.value = 120;
-  isEngineScheduled = true;
-}
-
-async function play() {
-  await Tone.start();
-  if (Tone.Transport.state === "started") return;
-
-  currentStep = 0;
-
-  if (loadedAudioBuffer) {
-    currentAudioPlayer = new Tone.Player(loadedAudioBuffer).toDestination();
-    currentAudioPlayer.start(0);
-  }
-
-  Tone.Transport.start();
-  document.getElementById("status").textContent = "Playing...";
-}
-
-function stop() {
-  Tone.Transport.stop();
-  if (currentAudioPlayer) {
-    try { currentAudioPlayer.stop(); } catch(e){}
-    currentAudioPlayer.dispose();
-    currentAudioPlayer = null;
-  }
-  document.getElementById("status").textContent = "Stopped";
-  document.querySelectorAll(".step").forEach(s => s.classList.remove("current-playhead"));
-}
-
-document.getElementById("globalPlayBtn").onclick = () => {
-  if (Tone.Transport.state === "started") stop();
-  else play();
-};
-document.getElementById("globalStopBtn").onclick = stop;
-
-/* ---------- DOM UI WORKSPACE BUILDER ---------- */
-function build() {
-  const root = document.getElementById("symphonyMatrixContainer");
-  root.innerHTML = "";
-
-  TRACKS.forEach(t => {
-    const row = document.createElement("div");
-    row.className = `matrix-row row-${t.kind}`;
-
-    row.innerHTML = `
-      <div class="row-meta">
-        <div class="instrument-name">${t.name}</div>
-        <div class="instrument-type">${t.id}</div>
-      </div>
-      <div class="steps-grid"></div>
-    `;
-
-    const grid = row.querySelector(".steps-grid");
-
-    for (let i = 0; i < STEPS; i++) {
-      const s = document.createElement("div");
-      s.className = "step";
-
-      if (t.kind === "perc") {
-        s.onclick = async () => {
-          await Tone.start();
-          t.steps[i] = !t.steps[i];
-          s.classList.toggle("active");
-          if (t.steps[i]) SAMPLERS[t.inst].triggerAttackRelease(t.type, "8n");
-        };
-      } else {
-        const labelText = document.createTextNode(t.steps[i].note);
-        s.appendChild(labelText);
-
-        s.onclick = async (e) => {
-          if (e.target.tagName === 'SELECT') return;
-          await Tone.start();
-          
-          t.steps[i].active = !t.steps[i].active;
-          s.classList.toggle("active");
-          
-          if (t.steps[i].active) {
-            SAMPLERS[t.inst].triggerAttackRelease(t.steps[i].note, "4n");
-          }
-        };
-
-        const select = document.createElement("select");
-        select.className = "pitch-select";
-        NOTES.forEach(n => {
-          const opt = document.createElement("option"); opt.value = n; opt.textContent = n;
-          if (n === t.steps[i].note) opt.selected = true;
-          select.appendChild(opt);
-        });
-
-        select.onchange = async (e) => {
-          await Tone.start();
-          t.steps[i].note = e.target.value;
-          labelText.nodeValue = e.target.value;
-          if (t.steps[i].active) SAMPLERS[t.inst].triggerAttackRelease(e.target.value, "4n");
-        };
-        s.appendChild(select);
-      }
-
-      grid.appendChild(s);
-    }
-    root.appendChild(row);
-  });
-}
-
-// Start sequence
-initSamplers();
-build();
 </script>
 </body>
 </html>
