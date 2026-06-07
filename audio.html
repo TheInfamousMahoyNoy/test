@@ -25,6 +25,36 @@ body {
   border-radius: 24px;
   padding: 24px;
   border: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+}
+
+/* BLOCKER OVERLAY: Prevents clicking cells while samples are downloading */
+#loadingOverlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(2, 4, 8, 0.85);
+  backdrop-filter: blur(10px);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 24px;
+  transition: opacity 0.5s ease;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid rgba(255,255,255,0.1);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 h1 {
@@ -72,7 +102,6 @@ button:hover { transform: translateY(-1px); }
 }
 input[type="file"] { display: none; }
 
-/* AUDACITY WAVEFORM TRACK */
 .audacity-track {
   background: #050811;
   border-radius: 14px;
@@ -89,7 +118,6 @@ canvas {
   margin-top: 8px;
 }
 
-/* SEQUENCER MATRIX */
 .sequencer-matrix {
   display: flex;
   flex-direction: column;
@@ -144,7 +172,6 @@ canvas {
   user-select: none;
 }
 
-/* MATRIX CHROMATIC TYPE STYLING */
 .row-perc .step.active { background: #f59e0b; color: white; }
 .row-mel .step.active { background: #3b82f6; color: white; }
 
@@ -152,7 +179,6 @@ canvas {
   outline: 2px solid #ef4444;
 }
 
-/* DROP-DOWN POPUP PITCH TUNER */
 .pitch-select {
   position: absolute;
   top: 100%;
@@ -180,6 +206,12 @@ canvas {
 <body>
 
 <div class="panel">
+  <div id="loadingOverlay">
+    <div class="spinner"></div>
+    <h3 style="margin: 0; color: #60a5fa;">Downloading Orchestra Sampler Banks...</h3>
+    <p style="font-size: 0.85rem; color: #64748b; margin-top: 4px;">Bypassing CORS filters & caching audio buffers</p>
+  </div>
+
   <h1>WaveForge Symphony Master – Tone.js Edition</h1>
 
   <div class="toolbar">
@@ -191,7 +223,7 @@ canvas {
       <input type="file" id="audioLoader" accept="audio/*">
     </label>
     
-    <span id="status">Loading Sampler Banks...</span>
+    <span id="status">Loading...</span>
   </div>
 
   <div class="audacity-track">
@@ -206,17 +238,14 @@ canvas {
 <script>
 let currentStep = 0;
 const STEPS = 16;
+let isEngineScheduled = false;
 
-// Backing file pipeline elements
 let loadedAudioBuffer = null;
 let currentAudioPlayer = null;
 
 const NOTES = ["C3", "D3", "E3", "F3", "G3", "A3", "B3", "C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"];
-
-// Universal sample storage maps
 const SAMPLERS = {};
 
-// Initialize robust multi-sampled instruments using Tone.Sampler engines
 function initSamplers() {
   const baseUrl = "https://tonejs.github.io/audio/";
 
@@ -225,7 +254,7 @@ function initSamplers() {
   }).toDestination();
 
   SAMPLERS.guitar = new Tone.Sampler({
-    urls: { C4: "casio/A1.mp3" } // Shared alternative structural root
+    urls: { C4: "casio/A1.mp3" }
   }).toDestination();
 
   SAMPLERS.violin = new Tone.Sampler({
@@ -240,17 +269,24 @@ function initSamplers() {
     urls: { C4: "berklee/trumpet_c4_long.mp3" }
   }).toDestination();
 
-  // Drum mapping configs
   SAMPLERS.drums = new Tone.Sampler({
     urls: {
       C1: "drum-samples/CR78/kick.mp3",
       D1: "drum-samples/CR78/snare.mp3",
       E1: "drum-samples/CR78/hihat.mp3"
-    },
-    onload: () => {
-      document.getElementById("status").textContent = "Ready";
     }
   }).toDestination();
+
+  // SAFETY GATE: Fires ONLY when all remote audio file chunks are safely compiled
+  Tone.loaded().then(() => {
+    document.getElementById("loadingOverlay").style.opacity = "0";
+    setTimeout(() => {
+      document.getElementById("loadingOverlay").style.display = "none";
+    }, 500);
+    
+    document.getElementById("status").textContent = "Ready";
+    startTransportScheduling();
+  });
 }
 
 function mkMel(note="C4"){
@@ -258,12 +294,9 @@ function mkMel(note="C4"){
 }
 
 const TRACKS = [
-  /* DRUMS */
   {id:"kick", name:"Kick Drum", kind:"perc", type:"C1", inst:"drums", steps:Array(STEPS).fill(false)},
   {id:"snare", name:"Snare Drum", kind:"perc", type:"D1", inst:"drums", steps:Array(STEPS).fill(false)},
   {id:"hihat", name:"Hi-Hat", kind:"perc", type:"E1", inst:"drums", steps:Array(STEPS).fill(false)},
-
-  /* MELODICS */
   {id:"piano", name:"Acoustic Piano", kind:"mel", inst:"piano", steps:mkMel("C4")},
   {id:"guitar", name:"Nylon Guitar", kind:"mel", inst:"guitar", steps:mkMel("E3")},
   {id:"violin", name:"Symphonic Violin", kind:"mel", inst:"violin", steps:mkMel("A4")},
@@ -276,11 +309,10 @@ document.getElementById("audioLoader").onchange = async function(e) {
   const file = e.target.files[0];
   if (!file) return;
 
-  document.getElementById("status").textContent = "Decoding backing track arrays...";
+  document.getElementById("status").textContent = "Decoding file data...";
   const reader = new FileReader();
   reader.onload = async function(evt) {
     try {
-      // Decode directly into a dedicated Tone.js buffer engine
       loadedAudioBuffer = new Tone.ToneAudioBuffer(evt.target.result, () => {
         document.getElementById("fileNameDisplay").textContent = `Linear Backing File: ${file.name}`;
         document.getElementById("status").textContent = "Waveform imported.";
@@ -296,7 +328,6 @@ document.getElementById("audioLoader").onchange = async function(e) {
 function drawTrackWaveform(channelData) {
   const canvas = document.getElementById("waveformCanvas");
   const ctx = canvas.getContext("2d");
-  
   ctx.fillStyle = "#020408";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -321,42 +352,45 @@ function drawTrackWaveform(channelData) {
   ctx.stroke();
 }
 
-/* ---------- TONE.JS TRANSPORT TRANSPORT LOOPS ---------- */
-function loopTick(time) {
-  // Use Tone's automated draw loop engine to sync visual changes safely with your screen's refresh rate
-  Tone.Draw.schedule(() => {
-    document.querySelectorAll(".step").forEach(s=>s.classList.remove("current-playhead"));
+/* ---------- LOOPS & TRANSPORT ---------- */
+function startTransportScheduling() {
+  if (isEngineScheduled) return;
+  
+  Tone.Transport.scheduleRepeat((time) => {
+    // Sync UI playhead transitions safely via the browser drawing engine
+    Tone.Draw.schedule(() => {
+      document.querySelectorAll(".step").forEach(s => s.classList.remove("current-playhead"));
+      TRACKS.forEach(t => {
+        const rowIdx = TRACKS.indexOf(t);
+        const el = document.querySelectorAll(".matrix-row")[rowIdx].querySelectorAll(".step")[currentStep];
+        if (el) el.classList.add("current-playhead");
+      });
+    }, time);
+
+    // Audio-safe clock execution block
     TRACKS.forEach(t => {
-      const rowIdx = TRACKS.indexOf(t);
-      const el = document.querySelectorAll(".matrix-row")[rowIdx].querySelectorAll(".step")[currentStep];
-      if (el) el.classList.add("current-playhead");
+      const step = t.steps[currentStep];
+      if (t.kind === "perc" && step) {
+        SAMPLERS[t.inst].triggerAttackRelease(t.type, "8n", time);
+      }
+      if (t.kind === "mel" && step.active) {
+        SAMPLERS[t.inst].triggerAttackRelease(step.note, "4n", time);
+      }
     });
-  }, time);
 
-  // Trigger instruments accurately along Tone's audio clock timeline
-  TRACKS.forEach(t => {
-    const step = t.steps[currentStep];
-    if (t.kind === "perc" && step) {
-      SAMPLERS[t.inst].triggerAttackRelease(t.type, "8n", time);
-    }
-    if (t.kind === "mel" && step.active) {
-      SAMPLERS[t.inst].triggerAttackRelease(step.note, "4n", time);
-    }
-  });
+    currentStep = (currentStep + 1) % STEPS;
+  }, "16n");
 
-  currentStep = (currentStep + 1) % STEPS;
+  Tone.Transport.bpm.value = 120;
+  isEngineScheduled = true;
 }
 
-/* ---------- TRANSPORT ACTIONS ---------- */
 async function play() {
-  // Start the underlying audio engine context
   await Tone.start();
-  
   if (Tone.Transport.state === "started") return;
 
   currentStep = 0;
 
-  // Stream the uploaded background track inside Tone's environment if it exists
   if (loadedAudioBuffer) {
     currentAudioPlayer = new Tone.Player(loadedAudioBuffer).toDestination();
     currentAudioPlayer.start(0);
@@ -368,15 +402,13 @@ async function play() {
 
 function stop() {
   Tone.Transport.stop();
-  
   if (currentAudioPlayer) {
     try { currentAudioPlayer.stop(); } catch(e){}
     currentAudioPlayer.dispose();
     currentAudioPlayer = null;
   }
-
   document.getElementById("status").textContent = "Stopped";
-  document.querySelectorAll(".step").forEach(s=>s.classList.remove("current-playhead"));
+  document.querySelectorAll(".step").forEach(s => s.classList.remove("current-playhead"));
 }
 
 document.getElementById("globalPlayBtn").onclick = () => {
@@ -385,7 +417,7 @@ document.getElementById("globalPlayBtn").onclick = () => {
 };
 document.getElementById("globalStopBtn").onclick = stop;
 
-/* ---------- GRID BUILD IMPLEMENTATION ---------- */
+/* ---------- DOM UI WORKSPACE BUILDER ---------- */
 function build() {
   const root = document.getElementById("symphonyMatrixContainer");
   root.innerHTML = "";
@@ -431,7 +463,6 @@ function build() {
           }
         };
 
-        // Inject dropdown selectors inside individual slots
         const select = document.createElement("select");
         select.className = "pitch-select";
         NOTES.forEach(n => {
@@ -455,14 +486,7 @@ function build() {
   });
 }
 
-// Map the clock ticks to drop exactly on 16th note divisions
-Tone.Transport.scheduleRepeat((time) => {
-  loopTick(time);
-}, "16n");
-
-// Set project tempo to 120 Beats Per Minute
-Tone.Transport.bpm.value = 120;
-
+// Start sequence
 initSamplers();
 build();
 </script>
