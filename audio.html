@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WaveForge Symphony Master – Tone.js Edition</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #090d16, #020408 70%);
+  color: white;
+  font-family: system-ui, -apple-system, sans-serif;
+  padding: 24px;
+}
+
+.panel {
+  max-width: 1500px;
+  margin: auto;
+  background: rgba(13, 20, 35, 0.88);
+  backdrop-filter: blur(25px);
+  border-radius: 24px;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+h1 {
+  margin: 0 0 6px;
+  background: linear-gradient(90deg, #60a5fa, #34d399);
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+h2 {
+  font-size: 1.1rem;
+  color: #60a5fa;
+  margin: 20px 0 10px 0;
+}
+
+.toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 18px 0;
+}
+
+button {
+  border: none;
+  padding: 12px 18px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(135deg, #3b82f6, #10b981);
+  color: white;
+  transition: transform 0.1s;
+}
+button:hover { transform: translateY(-1px); }
+
+.file-label {
+  display: inline-flex;
+  padding: 12px 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed #3b82f6;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #60a5fa;
+}
+input[type="file"] { display: none; }
+
+/* AUDACITY WAVEFORM TRACK */
+.audacity-track {
+  background: #050811;
+  border-radius: 14px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  margin-bottom: 20px;
+}
+canvas {
+  width: 100%;
+  height: 80px;
+  background: #020408;
+  border-radius: 8px;
+  display: block;
+  margin-top: 8px;
+}
+
+/* SEQUENCER MATRIX */
+.sequencer-matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+.matrix-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  background: rgba(255,255,255,0.03);
+  padding: 10px;
+  border-radius: 12px;
+}
+
+.row-meta {
+  width: 180px;
+}
+
+.instrument-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.instrument-type {
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+
+.steps-grid {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+.step {
+  flex: 1;
+  height: 44px;
+  background: #1e293b;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.12s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #94a3b8;
+  user-select: none;
+}
+
+/* MATRIX CHROMATIC TYPE STYLING */
+.row-perc .step.active { background: #f59e0b; color: white; }
+.row-mel .step.active { background: #3b82f6; color: white; }
+
+.step.current-playhead {
+  outline: 2px solid #ef4444;
+}
+
+/* DROP-DOWN POPUP PITCH TUNER */
+.pitch-select {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background: #1e293b;
+  color: white;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  z-index: 100;
+  display: none;
+  outline: none;
+}
+
+.step:hover .pitch-select,
+.step .pitch-select:focus {
+  display: block;
+}
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+</head>
+
+<body>
+
+<div class="panel">
+  <h1>WaveForge Symphony Master – Tone.js Edition</h1>
+
+  <div class="toolbar">
+    <button id="globalPlayBtn">Play Project</button>
+    <button id="globalStopBtn" class="btn-danger">Stop</button>
+    
+    <label class="file-label">
+      Load Audacity Sample Audio
+      <input type="file" id="audioLoader" accept="audio/*">
+    </label>
+    
+    <span id="status">Loading Sampler Banks...</span>
+  </div>
+
+  <div class="audacity-track">
+    <div style="font-size: 0.85rem; color: #64748b;" id="fileNameDisplay">No linear backing sample file imported.</div>
+    <canvas id="waveformCanvas"></canvas>
+  </div>
+
+  <h2>Symphony Master Sequencer Grid</h2>
+  <div class="sequencer-matrix" id="symphonyMatrixContainer"></div>
+</div>
+
+<script>
+let currentStep = 0;
+const STEPS = 16;
+
+// Backing file pipeline elements
+let loadedAudioBuffer = null;
+let currentAudioPlayer = null;
+
+const NOTES = ["C3", "D3", "E3", "F3", "G3", "A3", "B3", "C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"];
+
+// Universal sample storage maps
+const SAMPLERS = {};
+
+// Initialize robust multi-sampled instruments using Tone.Sampler engines
+function initSamplers() {
+  const baseUrl = "https://tonejs.github.io/audio/";
+
+  SAMPLERS.piano = new Tone.Sampler({
+    urls: { C4: "samsung-piano/C4.mp3" }
+  }).toDestination();
+
+  SAMPLERS.guitar = new Tone.Sampler({
+    urls: { C4: "casio/A1.mp3" } // Shared alternative structural root
+  }).toDestination();
+
+  SAMPLERS.violin = new Tone.Sampler({
+    urls: { C4: "berklee/violin_c4_long.mp3" }
+  }).toDestination();
+
+  SAMPLERS.flute = new Tone.Sampler({
+    urls: { C5: "berklee/flute_c5_long.mp3" }
+  }).toDestination();
+
+  SAMPLERS.trumpet = new Tone.Sampler({
+    urls: { C4: "berklee/trumpet_c4_long.mp3" }
+  }).toDestination();
+
+  // Drum mapping configs
+  SAMPLERS.drums = new Tone.Sampler({
+    urls: {
+      C1: "drum-samples/CR78/kick.mp3",
+      D1: "drum-samples/CR78/snare.mp3",
+      E1: "drum-samples/CR78/hihat.mp3"
+    },
+    onload: () => {
+      document.getElementById("status").textContent = "Ready";
+    }
+  }).toDestination();
+}
+
+function mkMel(note="C4"){
+  return Array.from({length:STEPS},()=>({active:false,note}));
+}
+
+const TRACKS = [
+  /* DRUMS */
+  {id:"kick", name:"Kick Drum", kind:"perc", type:"C1", inst:"drums", steps:Array(STEPS).fill(false)},
+  {id:"snare", name:"Snare Drum", kind:"perc", type:"D1", inst:"drums", steps:Array(STEPS).fill(false)},
+  {id:"hihat", name:"Hi-Hat", kind:"perc", type:"E1", inst:"drums", steps:Array(STEPS).fill(false)},
+
+  /* MELODICS */
+  {id:"piano", name:"Acoustic Piano", kind:"mel", inst:"piano", steps:mkMel("C4")},
+  {id:"guitar", name:"Nylon Guitar", kind:"mel", inst:"guitar", steps:mkMel("E3")},
+  {id:"violin", name:"Symphonic Violin", kind:"mel", inst:"violin", steps:mkMel("A4")},
+  {id:"flute", name:"Concert Flute", kind:"mel", inst:"flute", steps:mkMel("C5")},
+  {id:"trumpet", name:"Classic Trumpet", kind:"mel", inst:"trumpet", steps:mkMel("G4")}
+];
+
+/* ---------- AUDACITY LINEAR PLAYER ---------- */
+document.getElementById("audioLoader").onchange = async function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  document.getElementById("status").textContent = "Decoding backing track arrays...";
+  const reader = new FileReader();
+  reader.onload = async function(evt) {
+    try {
+      // Decode directly into a dedicated Tone.js buffer engine
+      loadedAudioBuffer = new Tone.ToneAudioBuffer(evt.target.result, () => {
+        document.getElementById("fileNameDisplay").textContent = `Linear Backing File: ${file.name}`;
+        document.getElementById("status").textContent = "Waveform imported.";
+        drawTrackWaveform(loadedAudioBuffer.getChannelData(0));
+      });
+    } catch(err) {
+      document.getElementById("status").textContent = "Decoding failed.";
+    }
+  };
+  reader.readAsArrayBuffer(file);
+};
+
+function drawTrackWaveform(channelData) {
+  const canvas = document.getElementById("waveformCanvas");
+  const ctx = canvas.getContext("2d");
+  
+  ctx.fillStyle = "#020408";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const step = Math.ceil(channelData.length / canvas.width);
+  const amp = canvas.height / 2;
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "#10b981";
+  ctx.beginPath();
+  ctx.moveTo(0, amp);
+
+  for (let i = 0; i < canvas.width; i++) {
+    let min = 1.0; let max = -1.0;
+    for (let j = 0; j < step; j++) {
+      let datum = channelData[i * step + j];
+      if (datum < min) min = datum;
+      if (datum > max) max = datum;
+    }
+    ctx.lineTo(i, amp + min * amp);
+    ctx.lineTo(i, amp + max * amp);
+  }
+  ctx.stroke();
+}
+
+/* ---------- TONE.JS TRANSPORT TRANSPORT LOOPS ---------- */
+function loopTick(time) {
+  // Use Tone's automated draw loop engine to sync visual changes safely with your screen's refresh rate
+  Tone.Draw.schedule(() => {
+    document.querySelectorAll(".step").forEach(s=>s.classList.remove("current-playhead"));
+    TRACKS.forEach(t => {
+      const rowIdx = TRACKS.indexOf(t);
+      const el = document.querySelectorAll(".matrix-row")[rowIdx].querySelectorAll(".step")[currentStep];
+      if (el) el.classList.add("current-playhead");
+    });
+  }, time);
+
+  // Trigger instruments accurately along Tone's audio clock timeline
+  TRACKS.forEach(t => {
+    const step = t.steps[currentStep];
+    if (t.kind === "perc" && step) {
+      SAMPLERS[t.inst].triggerAttackRelease(t.type, "8n", time);
+    }
+    if (t.kind === "mel" && step.active) {
+      SAMPLERS[t.inst].triggerAttackRelease(step.note, "4n", time);
+    }
+  });
+
+  currentStep = (currentStep + 1) % STEPS;
+}
+
+/* ---------- TRANSPORT ACTIONS ---------- */
+async function play() {
+  // Start the underlying audio engine context
+  await Tone.start();
+  
+  if (Tone.Transport.state === "started") return;
+
+  currentStep = 0;
+
+  // Stream the uploaded background track inside Tone's environment if it exists
+  if (loadedAudioBuffer) {
+    currentAudioPlayer = new Tone.Player(loadedAudioBuffer).toDestination();
+    currentAudioPlayer.start(0);
+  }
+
+  Tone.Transport.start();
+  document.getElementById("status").textContent = "Playing...";
+}
+
+function stop() {
+  Tone.Transport.stop();
+  
+  if (currentAudioPlayer) {
+    try { currentAudioPlayer.stop(); } catch(e){}
+    currentAudioPlayer.dispose();
+    currentAudioPlayer = null;
+  }
+
+  document.getElementById("status").textContent = "Stopped";
+  document.querySelectorAll(".step").forEach(s=>s.classList.remove("current-playhead"));
+}
+
+document.getElementById("globalPlayBtn").onclick = () => {
+  if (Tone.Transport.state === "started") stop();
+  else play();
+};
+document.getElementById("globalStopBtn").onclick = stop;
+
+/* ---------- GRID BUILD IMPLEMENTATION ---------- */
+function build() {
+  const root = document.getElementById("symphonyMatrixContainer");
+  root.innerHTML = "";
+
+  TRACKS.forEach(t => {
+    const row = document.createElement("div");
+    row.className = `matrix-row row-${t.kind}`;
+
+    row.innerHTML = `
+      <div class="row-meta">
+        <div class="instrument-name">${t.name}</div>
+        <div class="instrument-type">${t.id}</div>
+      </div>
+      <div class="steps-grid"></div>
+    `;
+
+    const grid = row.querySelector(".steps-grid");
+
+    for (let i = 0; i < STEPS; i++) {
+      const s = document.createElement("div");
+      s.className = "step";
+
+      if (t.kind === "perc") {
+        s.onclick = async () => {
+          await Tone.start();
+          t.steps[i] = !t.steps[i];
+          s.classList.toggle("active");
+          if (t.steps[i]) SAMPLERS[t.inst].triggerAttackRelease(t.type, "8n");
+        };
+      } else {
+        const labelText = document.createTextNode(t.steps[i].note);
+        s.appendChild(labelText);
+
+        s.onclick = async (e) => {
+          if (e.target.tagName === 'SELECT') return;
+          await Tone.start();
+          
+          t.steps[i].active = !t.steps[i].active;
+          s.classList.toggle("active");
+          
+          if (t.steps[i].active) {
+            SAMPLERS[t.inst].triggerAttackRelease(t.steps[i].note, "4n");
+          }
+        };
+
+        // Inject dropdown selectors inside individual slots
+        const select = document.createElement("select");
+        select.className = "pitch-select";
+        NOTES.forEach(n => {
+          const opt = document.createElement("option"); opt.value = n; opt.textContent = n;
+          if (n === t.steps[i].note) opt.selected = true;
+          select.appendChild(opt);
+        });
+
+        select.onchange = async (e) => {
+          await Tone.start();
+          t.steps[i].note = e.target.value;
+          labelText.nodeValue = e.target.value;
+          if (t.steps[i].active) SAMPLERS[t.inst].triggerAttackRelease(e.target.value, "4n");
+        };
+        s.appendChild(select);
+      }
+
+      grid.appendChild(s);
+    }
+    root.appendChild(row);
+  });
+}
+
+// Map the clock ticks to drop exactly on 16th note divisions
+Tone.Transport.scheduleRepeat((time) => {
+  loopTick(time);
+}, "16n");
+
+// Set project tempo to 120 Beats Per Minute
+Tone.Transport.bpm.value = 120;
+
+initSamplers();
+build();
+</script>
+</body>
+</html>
