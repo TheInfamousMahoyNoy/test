@@ -3,293 +3,637 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WaveForge Symphony Master – Tone.js Edition</title>
+
+<title>NexGen Core Digital – Universal Media Multiplexer</title>
+<link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;700;800&amp;display=swap" rel="stylesheet">
+
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 <style>
-* { box-sizing: border-box; }
+*{
+  box-sizing:border-box;
+}
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at top, #090d16, #020408 70%);
+  background: radial-gradient(circle at top, #0f172a, #020617 60%);
   color: white;
-  font-family: system-ui, -apple-system, sans-serif;
-  padding: 24px;
+  font-family: 'Oxanium', system-ui, sans-serif;
+  padding: 30px;
 }
 
-.panel {
-  max-width: 1500px;
-  margin: auto;
-  background: rgba(13, 20, 35, 0.88);
-  backdrop-filter: blur(25px);
-  border-radius: 24px;
-  padding: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+.panel{
   position: relative;
+  max-width:1500px;
+  margin:auto;
+  background:rgba(15,23,42,.72);
+  backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:28px;
+  padding:32px;
+  box-shadow:
+    0 0 70px rgba(14,165,233,.08),
+    inset 0 0 60px rgba(255,255,255,.03);
 }
 
-/* BLOCKER OVERLAY: Prevents clicking cells while samples are downloading */
-#loadingOverlay {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(2, 4, 8, 0.85);
-  backdrop-filter: blur(10px);
-  z-index: 1000;
+h1{
+  margin-top:0;
+  font-size:2.2rem;
+  letter-spacing:.5px;
+  background: linear-gradient(90deg, #38bdf8, #22c55e);
+  -webkit-background-clip:text;
+  color:transparent;
+}
+
+.toolbar{
+  display:flex;
+  gap:14px;
+  margin-bottom:26px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+
+.snap-container {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  border-radius: 24px;
-  transition: opacity 0.5s ease;
-}
-
-.spinner {
-  width: 50px;
-  height: 50px;
-  border: 5px solid rgba(255,255,255,0.1);
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 16px;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-h1 {
-  margin: 0 0 6px;
-  background: linear-gradient(90deg, #60a5fa, #34d399);
-  -webkit-background-clip: text;
-  color: transparent;
-}
-
-h2 {
-  font-size: 1.1rem;
-  color: #60a5fa;
-  margin: 20px 0 10px 0;
-}
-
-.toolbar {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin: 18px 0;
-}
-
-button {
-  border: none;
-  padding: 12px 18px;
-  border-radius: 10px;
-  font-weight: 700;
-  cursor: pointer;
-  background: linear-gradient(135deg, #3b82f6, #10b981);
-  color: white;
-  transition: transform 0.1s;
-}
-button:hover { transform: translateY(-1px); }
-
-.file-label {
-  display: inline-flex;
-  padding: 12px 18px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px dashed #3b82f6;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 600;
-  color: #60a5fa;
-}
-input[type="file"] { display: none; }
-
-.audacity-track {
-  background: #050811;
+  gap: 10px;
+  background: #1e293b;
+  padding: 8px 16px;
   border-radius: 14px;
-  padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  margin-bottom: 20px;
-}
-canvas {
-  width: 100%;
-  height: 80px;
-  background: #020408;
-  border-radius: 8px;
-  display: block;
-  margin-top: 8px;
+  border: 1px solid #22c55e;
+  box-shadow: 0 0 15px rgba(34,197,94,0.15);
 }
 
-.sequencer-matrix {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-height: 500px;
-  overflow-y: auto;
-  padding-right: 6px;
-}
-.matrix-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  background: rgba(255,255,255,0.03);
-  padding: 10px;
-  border-radius: 12px;
-}
+.snap-container label { font-size: 0.9rem; font-weight: 700; color: #22c55e; }
 
-.row-meta {
-  width: 180px;
-}
-
-.instrument-name {
-  font-weight: 700;
-  font-size: 0.9rem;
-}
-
-.instrument-type {
-  font-size: 0.7rem;
-  opacity: 0.6;
-}
-
-.steps-grid {
-  display: flex;
-  gap: 6px;
-  flex: 1;
-}
-
-.step {
-  flex: 1;
-  height: 44px;
-  background: #1e293b;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: 0.12s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: #94a3b8;
-  user-select: none;
-}
-
-.row-perc .step.active { background: #f59e0b; color: white; }
-.row-mel .step.active { background: #3b82f6; color: white; }
-
-.step.current-playhead {
-  outline: 2px solid #ef4444;
-}
-
-.pitch-select {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  width: 100%;
-  background: #1e293b;
+select, input[type="range"] {
+  background: #0f172a;
   color: white;
-  border: 1px solid #475569;
-  border-radius: 4px;
-  font-size: 0.7rem;
-  z-index: 100;
-  display: none;
+  border: 1px solid rgba(255,255,255,.2);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
   outline: none;
 }
 
-.step:hover .pitch-select,
-.step .pitch-select:focus {
-  display: block;
+button, input[type="file"]{
+  border:none;
+  border-radius:14px;
+  padding:12px 18px;
+  background:#111827;
+  color:white;
 }
+
+input[type="file"]{
+  border:1px solid rgba(255,255,255,.08);
+}
+
+button{
+  cursor:pointer;
+  font-weight:700;
+  transition:.22s;
+  background: linear-gradient(135deg, #0ea5e9, #22c55e);
+}
+
+button:hover:not(:disabled){
+  transform:translateY(-2px);
+  box-shadow: 0 12px 30px rgba(34,197,94,.22);
+}
+
+button:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+  background:#334155;
+}
+
+#status{
+  color:#38bdf8;
+  font-weight:600;
+}
+
+.section{
+  position: relative;
+  margin-top:26px;
+}
+
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 26px;
+  padding: 40px;
+  border: 2px dashed rgba(56, 189, 248, 0.25);
+  border-radius: 20px;
+  background: rgba(2, 6, 23, 0.4);
+  text-align: center;
+  transition: all 0.25s ease;
+}
+
+.drop-zone.drag-over {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.06);
+  box-shadow: inset 0 0 20px rgba(34, 197, 94, 0.1);
+}
+
+.drop-zone p {
+  margin: 0 0 14px 0;
+  color: #94a3b8;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.custom-file-upload {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 14px;
+  padding: 12px 18px;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(8px);
+  color: #38bdf8;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.custom-file-upload:hover {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: #38bdf8;
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+  transform: translateY(-1px);
+}
+
+.custom-file-upload input[type="file"] {
+  display: none;
+}
+
+.export-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.4);
+  padding: 6px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.export-container select {
+  border-color: rgba(56, 189, 248, 0.2);
+}
+
+#processBtn {
+  background: linear-gradient(135deg, #a855f7, #0ea5e9);
+  padding: 8px 16px;
+  font-size: 0.85rem;
+}
+
+#processBtn:hover {
+  box-shadow: 0 8px 24px rgba(168, 85, 247, 0.3);
+}
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+  background: #020617;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 24px;
+  min-height: 200px;
+}
+
+.media-card {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.media-badge {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.badge-image { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8; }
+.badge-audio { background: rgba(168, 85, 247, 0.2); color: #a855f7; border: 1px solid #a855f7; }
+.badge-video { background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid #f59e0b; }
+.badge-document { background: rgba(34, 197, 94, 0.2); color: #22c55e; border: 1px solid #22c55e; }
+.badge-archive { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444; }
+
+.media-thumbnail {
+  width: 100%;
+  height: 140px;
+  background: #090d16;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.media-thumbnail img, .media-thumbnail video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.fallback-icon {
+  font-size: 2.5rem;
+  opacity: 0.5;
+}
+
+.media-details {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.media-name {
+  color: white;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.card-actions label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #38bdf8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.card-actions select {
+  width: 100%;
+  background: #020617;
+  font-size: 0.8rem;
+}
+
+.remove-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ef4444;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);
+  z-index: 10;
+}
+
+.info { opacity: .7; margin-top: 12px; font-size: .95rem; }
+.legend { display: flex; gap: 18px; margin-top: 12px; opacity: .7; font-size: .85rem; }
+.legend span { display: flex; align-items: center; gap: 6px; }
+.dot { width: 12px; height: 12px; border-radius: 999px; }
+.blue { background: #38bdf8; }
+.green { background: #22c55e; }
+.purple { background: #a855f7; }
+
+#hiddenCanvas { display: none; }
 </style>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 </head>
-
 <body>
 
 <div class="panel">
-  <div id="loadingOverlay">
-    <div class="spinner"></div>
-    <h3 style="margin: 0; color: #60a5fa;">Downloading Orchestra Sampler Banks...</h3>
-    <p style="font-size: 0.85rem; color: #64748b; margin-top: 4px;">Bypassing CORS filters & caching audio buffers</p>
-  </div>
 
-  <h1>WaveForge Symphony Master – Tone.js Edition</h1>
+  <h1>NexGen Core Digital – Universal Media Multiplexer</h1>
+
+  <div class="drop-zone" id="dropZone">
+    <p>Drag & drop documents, images, audio, video, or archives into the matrix</p>
+    <label class="custom-file-upload">
+      <input type="file" id="upload" accept="image/*,audio/*,video/*,.pdf,.txt,.zip" multiple>
+      <span>Browse Local Media</span>
+    </label>
+  </div>
 
   <div class="toolbar">
-    <button id="globalPlayBtn">Play Project</button>
-    <button id="globalStopBtn" class="btn-danger">Stop</button>
+    <button id="clear">Reset Multiplexer</button>
     
-    <label class="file-label">
-      Load Audacity Sample Audio
-      <input type="file" id="audioLoader" accept="audio/*">
-    </label>
+    <div class="snap-container">
+      <label for="globalTarget">Universal Target Preset:</label>
+      <select id="globalTarget">
+        <option value="preserve">Preserve Individual Settings</option>
+        <option value="image/png">Force All Images ➔ PNG</option>
+        <option value="image/jpeg">Force All Images ➔ JPEG</option>
+        <option value="image/webp">Force All Images ➔ WebP</option>
+        <option value="application/pdf">Bundle Compatible Matrix ➔ PDF</option>
+        <option value="application/zip">Package All Items ➔ ZIP Archive</option>
+      </select>
+    </div>
+
+    <div class="export-container">
+      <button id="processBtn">Compile & Execute</button>
+    </div>
     
-    <span id="status">Loading...</span>
+    <span id="status">Systems Active. Awaiting payloads...</span>
   </div>
 
-  <div class="audacity-track">
-    <div style="font-size: 0.85rem; color: #64748b;" id="fileNameDisplay">No linear backing sample file imported.</div>
-    <canvas id="waveformCanvas"></canvas>
+  <div class="section">
+    <h2>Unified Assembly Grid</h2>
+    <div class="preview-grid" id="previewGrid"></div>
+
+    <div class="info">
+      Multi-Threaded Conversion Matrix • Override settings per asset card locally, or override globally via the toolbar selector interface.
+    </div>
+
+    <div class="legend">
+      <span><div class="dot blue"></div> Canvas Framework</span>
+      <span><div class="dot green"></div> Vector DOM Core</span>
+      <span><div class="dot purple"></div> Data Stream Compressor</span>
+    </div>
   </div>
 
-  <h2>Symphony Master Sequencer Grid</h2>
-  <div class="sequencer-matrix" id="symphonyMatrixContainer"></div>
 </div>
 
+<canvas id="hiddenCanvas"></canvas>
 <script>
-/* ---------- UPDATED SAMPLE INITIALIZER WITH FIXED ABSOLUTE PATHS ---------- */
-function initSamplers() {
-  // Hardcoded absolute base path directly targeting Tone.js's remote asset repository
-  const absoluteBase = "https://tonejs.github.io/audio/";
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('upload');
+const previewGrid = document.getElementById('previewGrid');
+const clearBtn = document.getElementById('clear');
+const processBtn = document.getElementById('processBtn');
+const globalTarget = document.getElementById('globalTarget');
+const statusText = document.getElementById('status');
 
-  SAMPLERS.piano = new Tone.Sampler({
-    urls: { C4: "samsung-piano/C4.mp3" },
-    baseUrl: absoluteBase
-  }).toDestination();
+let workspaceFiles = [];
 
-  SAMPLERS.guitar = new Tone.Sampler({
-    urls: { C4: "casio/A1.mp3" },
-    baseUrl: absoluteBase
-  }).toDestination();
+const individualOptions = {
+  image: ["png", "jpeg", "webp"],
+  audio: ["mp3", "wav"],
+  video: ["mp4", "webm"],
+  document: ["pdf", "txt"],
+  archive: ["zip"]
+};
 
-  SAMPLERS.violin = new Tone.Sampler({
-    urls: { C4: "berklee/violin_c4_long.mp3" },
-    baseUrl: absoluteBase
-  }).toDestination();
-
-  SAMPLERS.flute = new Tone.Sampler({
-    urls: { C5: "berklee/flute_c5_long.mp3" },
-    baseUrl: absoluteBase
-  }).toDestination();
-
-  SAMPLERS.trumpet = new Tone.Sampler({
-    urls: { C4: "berklee/trumpet_c4_long.mp3" },
-    baseUrl: absoluteBase
-  }).toDestination();
-
-  SAMPLERS.drums = new Tone.Sampler({
-    urls: {
-      C1: "drum-samples/CR78/kick.mp3",
-      D1: "drum-samples/CR78/snare.mp3",
-      E1: "drum-samples/CR78/hihat.mp3"
-    },
-    baseUrl: absoluteBase
-  }).toDestination();
-
-  // SAFETY LOADING GATE
-  Tone.loaded().then(() => {
-    // Hide the blocker screen smoothly once everything is successfully buffered
-    document.getElementById("loadingOverlay").style.opacity = "0";
-    setTimeout(() => {
-      document.getElementById("loadingOverlay").style.display = "none";
-    }, 500);
-    
-    document.getElementById("status").textContent = "Ready";
-    startTransportScheduling();
-  }).catch(err => {
-    document.getElementById("status").textContent = "Error downloading audio banks.";
-    console.error("Sampler loading stalled:", err);
-  });
+// -------------------------
+// FILE TYPE DETECTION
+// -------------------------
+function detectType(file) {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("audio/")) return "audio";
+  if (file.type.startsWith("video/")) return "video";
+  if (file.type === "application/pdf" || file.name.endsWith(".txt")) return "document";
+  return "archive";
 }
+
+// -------------------------
+// DRAG & DROP
+// -------------------------
+["dragenter", "dragover"].forEach(evt => {
+  dropZone.addEventListener(evt, e => {
+    e.preventDefault();
+    dropZone.classList.add("drag-over");
+  });
+});
+
+["dragleave", "drop"].forEach(evt => {
+  dropZone.addEventListener(evt, e => {
+    e.preventDefault();
+    dropZone.classList.remove("drag-over");
+  });
+});
+
+dropZone.addEventListener("drop", e => handleFiles(e.dataTransfer.files));
+fileInput.addEventListener("change", e => handleFiles(e.target.files));
+
+// -------------------------
+// HANDLE FILES
+// -------------------------
+function handleFiles(files) {
+  for (let file of files) {
+    const type = detectType(file);
+
+    workspaceFiles.push({
+      file,
+      type,
+      target: individualOptions[type][0]
+    });
+
+    renderCard(file, type, workspaceFiles.length - 1);
+  }
+
+  updateStatus();
+}
+
+// -------------------------
+// UI CARD
+// -------------------------
+function renderCard(file, type, index) {
+  const card = document.createElement("div");
+  card.className = "media-card";
+
+  const badge = document.createElement("div");
+  badge.className = "media-badge badge-" + type;
+  badge.textContent = type;
+
+  const thumb = document.createElement("div");
+  thumb.className = "media-thumbnail";
+
+  const icon = document.createElement("div");
+  icon.className = "fallback-icon";
+  icon.textContent =
+    type === "image" ? "🖼️" :
+    type === "audio" ? "🎵" :
+    type === "video" ? "🎬" : "📦";
+
+  thumb.appendChild(icon);
+
+  const details = document.createElement("div");
+  details.className = "media-details";
+  details.innerHTML = `
+    <div class="media-name">${file.name}</div>
+    <div>${(file.size / 1024).toFixed(1)} KB</div>
+  `;
+
+  const actions = document.createElement("div");
+  actions.className = "card-actions";
+
+  const label = document.createElement("label");
+  label.textContent = "Output Format";
+
+  const select = document.createElement("select");
+
+  individualOptions[type].forEach(fmt => {
+    const opt = document.createElement("option");
+    opt.value = fmt;
+    opt.textContent = fmt.toUpperCase();
+    select.appendChild(opt);
+  });
+
+  select.onchange = e => {
+    workspaceFiles[index].target = e.target.value;
+  };
+
+  actions.appendChild(label);
+  actions.appendChild(select);
+
+  card.appendChild(badge);
+  card.appendChild(thumb);
+  card.appendChild(details);
+  card.appendChild(actions);
+
+  previewGrid.appendChild(card);
+}
+
+// -------------------------
+// STATUS
+// -------------------------
+function updateStatus() {
+  const count = workspaceFiles.length;
+  statusText.textContent = count
+    ? `Loaded ${count} files`
+    : "Systems Active. Awaiting payloads...";
+}
+
+clearBtn.onclick = () => {
+  workspaceFiles = [];
+  previewGrid.innerHTML = "";
+  updateStatus();
+};
+
+// -------------------------
+// CLOUDCONVERT CORE
+// -------------------------
+async function convertFile(file, outputFormat) {
+
+  const API_KEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiYzYzYzJlNjM1ZmFlOGQyNmRkN2RjNWQwZmIyNjBmOWJhNTdmNzI3OTFkMmZlNTc3N2UyYzI2ODY5YzkxNTRlYWNjNmJjMTkwMzBiY2MwOTUiLCJpYXQiOjE3ODA5MDA3MDMuMTcwMzY2LCJuYmYiOjE3ODA5MDA3MDMuMTcwMzY3LCJleHAiOjQ5MzY1NzQzMDMuMTYyOTM0LCJzdWIiOiI2NzExMTQ2NiIsInNjb3BlcyI6WyJwcmVzZXQud3JpdGUiLCJ1c2VyLnJlYWQiLCJ1c2VyLndyaXRlIiwidGFzay5yZWFkIiwidGFzay53cml0ZSIsIndlYmhvb2sucmVhZCIsIndlYmhvb2sud3JpdGUiLCJwcmVzZXQucmVhZCJdfQ.Neeg9MY65B2VeAqgNMlQL5guChXjVULxcUE50_tED2L0K4EUpuFXC9D1oki7s0tm6Gxq4WljnGc90gsk2Wh8lhjU6Q4_frGb20GO5Ygc6VAQ4g9ED77l7-91Fzco7YlVCfZHb7KutNUpdn_Vo0_l6LJhrqVeMztRhSwm7IbCtnfh2EG6RZB3fRh-GaGh3NAUQUFCNUSQ0Z4CudXUxELOmG5YGq0pNYgHTWUMIewnChvWS1ry-1BvdZpjveKewyTb8zAl3aJ-1of6zCDvp0mZVphNtKqU1UtRBZLWx1oJAbqmFhhxnEsChVOrdClNdcT51KuJyqEBb9yG3QRBRDjPWy_6J5eOyqBD39dwdIZrbZFRZQf8L0mKpopYTsidMoE2nZbzlrarcWRnbWnaygX0VtPeu_V3XbqDTUFF1q4LrHe_2rFXCJTLtyINd28-MP_MaNCQnn0NWAFxR_5KtOa-RRj-EXWM7Q6B2Q-oWSOZ1Qcgk8cErJ2RJ4QduujClpWja-4j46PS3zgWlbR_qopzn6qo5pxcazqkYe9cX98FoH9Gla_nhOF8aWnGnEQtpTfial7-omhMswVyU5nw7XYvviH8cfsxifJxSHCNlGE7uU9qIwtBlB-E4LSKI_XBxxc2eyMbWuGJNqHPP5500KsjcFkqtqAJnxm6533j0XIKJvM"; // <-- keep but rotate later
+
+  // 1. create job with upload task
+  const jobRes = await fetch("https://api.cloudconvert.com/v2/jobs", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + API_KEY,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      tasks: {
+        "upload": { operation: "import/upload" },
+        "convert": {
+          operation: "convert",
+          input: "upload",
+          output_format: outputFormat
+        },
+        "export": {
+          operation: "export/url",
+          input: "convert"
+        }
+      }
+    })
+  });
+
+  const job = await jobRes.json();
+
+  const uploadTask = job.data.tasks.find(t => t.name === "upload");
+
+  // 2. upload file into task
+  await fetch(uploadTask.result.form.url, {
+    method: "POST",
+    body: (() => {
+      const fd = new FormData();
+      Object.entries(uploadTask.result.form.parameters).forEach(([k, v]) => {
+        fd.append(k, v);
+      });
+      fd.append("file", file);
+      return fd;
+    })()
+  });
+
+  // 3. wait for job completion
+  let finished;
+  while (true) {
+    const res = await fetch(`https://api.cloudconvert.com/v2/jobs/${job.data.id}`, {
+      headers: {
+        "Authorization": "Bearer " + API_KEY
+      }
+    });
+
+    finished = await res.json();
+
+    if (finished.data.status === "finished") break;
+    if (finished.data.status === "error") throw new Error("Conversion failed");
+
+    await new Promise(r => setTimeout(r, 1500));
+  }
+
+  // 4. get export URL
+  const exportTask = finished.data.tasks.find(t => t.name === "export");
+
+  return exportTask.result.files;
+}
+
+// -------------------------
+// MAIN EXECUTION
+// -------------------------
+processBtn.onclick = async () => {
+  if (!workspaceFiles.length) {
+    statusText.textContent = "No files loaded";
+    return;
+  }
+
+  const global = globalTarget.value;
+  statusText.textContent = "Processing conversion pipeline...";
+
+  try {
+    for (const item of workspaceFiles) {
+
+      const format =
+        global === "preserve"
+          ? item.target
+          : global.split("/")[1];
+
+      const result = await convertFile(item.file, format);
+
+      for (const f of result) {
+        const a = document.createElement("a");
+        a.href = f.url;
+        a.download = f.filename;
+        a.click();
+      }
+    }
+
+    statusText.textContent = "Conversion complete.";
+  } catch (err) {
+    console.error(err);
+    statusText.textContent = "Conversion failed.";
+  }
+};
 </script>
 </body>
 </html>
