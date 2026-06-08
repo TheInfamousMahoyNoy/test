@@ -394,6 +394,14 @@ const statusText = document.getElementById('status');
 
 let workspaceFiles = [];
 
+const formatMap = {
+  image: "png",
+  audio: "mp3",
+  video: "mp4",
+  document: "pdf",
+  archive: "zip"
+};
+
 const individualOptions = {
   image: ["png", "jpeg", "webp"],
   audio: ["mp3", "wav"],
@@ -533,9 +541,9 @@ clearBtn.onclick = () => {
 // -------------------------
 async function convertFile(file, outputFormat) {
 
-  const API_KEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiYzYzYzJlNjM1ZmFlOGQyNmRkN2RjNWQwZmIyNjBmOWJhNTdmNzI3OTFkMmZlNTc3N2UyYzI2ODY5YzkxNTRlYWNjNmJjMTkwMzBiY2MwOTUiLCJpYXQiOjE3ODA5MDA3MDMuMTcwMzY2LCJuYmYiOjE3ODA5MDA3MDMuMTcwMzY3LCJleHAiOjQ5MzY1NzQzMDMuMTYyOTM0LCJzdWIiOiI2NzExMTQ2NiIsInNjb3BlcyI6WyJwcmVzZXQud3JpdGUiLCJ1c2VyLnJlYWQiLCJ1c2VyLndyaXRlIiwidGFzay5yZWFkIiwidGFzay53cml0ZSIsIndlYmhvb2sucmVhZCIsIndlYmhvb2sud3JpdGUiLCJwcmVzZXQucmVhZCJdfQ.Neeg9MY65B2VeAqgNMlQL5guChXjVULxcUE50_tED2L0K4EUpuFXC9D1oki7s0tm6Gxq4WljnGc90gsk2Wh8lhjU6Q4_frGb20GO5Ygc6VAQ4g9ED77l7-91Fzco7YlVCfZHb7KutNUpdn_Vo0_l6LJhrqVeMztRhSwm7IbCtnfh2EG6RZB3fRh-GaGh3NAUQUFCNUSQ0Z4CudXUxELOmG5YGq0pNYgHTWUMIewnChvWS1ry-1BvdZpjveKewyTb8zAl3aJ-1of6zCDvp0mZVphNtKqU1UtRBZLWx1oJAbqmFhhxnEsChVOrdClNdcT51KuJyqEBb9yG3QRBRDjPWy_6J5eOyqBD39dwdIZrbZFRZQf8L0mKpopYTsidMoE2nZbzlrarcWRnbWnaygX0VtPeu_V3XbqDTUFF1q4LrHe_2rFXCJTLtyINd28-MP_MaNCQnn0NWAFxR_5KtOa-RRj-EXWM7Q6B2Q-oWSOZ1Qcgk8cErJ2RJ4QduujClpWja-4j46PS3zgWlbR_qopzn6qo5pxcazqkYe9cX98FoH9Gla_nhOF8aWnGnEQtpTfial7-omhMswVyU5nw7XYvviH8cfsxifJxSHCNlGE7uU9qIwtBlB-E4LSKI_XBxxc2eyMbWuGJNqHPP5500KsjcFkqtqAJnxm6533j0XIKJvM"; // <-- keep but rotate later
+  const API_KEY = "YOUR_API_KEY_HERE";
 
-  // 1. create job with upload task
+  // 1. Create job
   const jobRes = await fetch("https://api.cloudconvert.com/v2/jobs", {
     method: "POST",
     headers: {
@@ -544,15 +552,15 @@ async function convertFile(file, outputFormat) {
     },
     body: JSON.stringify({
       tasks: {
-        "upload": { operation: "import/upload" },
-        "convert": {
+        "import-1": { operation: "import/upload" },
+        "convert-1": {
           operation: "convert",
-          input: "upload",
+          input: "import-1",
           output_format: outputFormat
         },
-        "export": {
+        "export-1": {
           operation: "export/url",
-          input: "convert"
+          input: "convert-1"
         }
       }
     })
@@ -560,40 +568,59 @@ async function convertFile(file, outputFormat) {
 
   const job = await jobRes.json();
 
-  const uploadTask = job.data.tasks.find(t => t.name === "upload");
+  const uploadTask = job.data.tasks.find(t => t.name === "import-1");
 
-  // 2. upload file into task
-  await fetch(uploadTask.result.form.url, {
-    method: "POST",
-    body: (() => {
-      const fd = new FormData();
-      Object.entries(uploadTask.result.form.parameters).forEach(([k, v]) => {
-        fd.append(k, v);
-      });
-      fd.append("file", file);
-      return fd;
-    })()
+  if (!uploadTask || !uploadTask.result) {
+    throw new Error("Upload task not ready");
+  }
+
+  // 2. Upload file
+  const formData = new FormData();
+
+  Object.entries(uploadTask.result.form.parameters).forEach(([k, v]) => {
+    formData.append(k, v);
   });
 
-  // 3. wait for job completion
+  formData.append("file", file);
+
+  const uploadRes = await fetch(uploadTask.result.form.url, {
+    method: "POST",
+    body: formData
+  });
+
+  if (!uploadRes.ok) {
+    throw new Error("Upload failed");
+  }
+
+  // 3. Poll job
   let finished;
+
   while (true) {
-    const res = await fetch(`https://api.cloudconvert.com/v2/jobs/${job.data.id}`, {
-      headers: {
-        "Authorization": "Bearer " + API_KEY
+    const res = await fetch(
+      `https://api.cloudconvert.com/v2/jobs/${job.data.id}`,
+      {
+        headers: {
+          "Authorization": "Bearer " + API_KEY
+        }
       }
-    });
+    );
 
     finished = await res.json();
 
     if (finished.data.status === "finished") break;
-    if (finished.data.status === "error") throw new Error("Conversion failed");
+
+    if (finished.data.status === "error") {
+      console.log("FULL ERROR:", finished);
+
+      const failed = finished.data.tasks.find(t => t.status === "error");
+      throw new Error(failed?.message || "CloudConvert failed");
+    }
 
     await new Promise(r => setTimeout(r, 1500));
   }
 
-  // 4. get export URL
-  const exportTask = finished.data.tasks.find(t => t.name === "export");
+  // 4. Export result
+  const exportTask = finished.data.tasks.find(t => t.name === "export-1");
 
   return exportTask.result.files;
 }
