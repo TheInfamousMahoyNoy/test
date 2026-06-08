@@ -541,7 +541,7 @@ clearBtn.onclick = () => {
 // -------------------------
 async function convertFile(file, outputFormat) {
 
-  const API_KEY = "YOUR_API_KEY_HERE";
+  const API_KEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiYzYzYzJlNjM1ZmFlOGQyNmRkN2RjNWQwZmIyNjBmOWJhNTdmNzI3OTFkMmZlNTc3N2UyYzI2ODY5YzkxNTRlYWNjNmJjMTkwMzBiY2MwOTUiLCJpYXQiOjE3ODA5MDA3MDMuMTcwMzY2LCJuYmYiOjE3ODA5MDA3MDMuMTcwMzY3LCJleHAiOjQ5MzY1NzQzMDMuMTYyOTM0LCJzdWIiOiI2NzExMTQ2NiIsInNjb3BlcyI6WyJwcmVzZXQud3JpdGUiLCJ1c2VyLnJlYWQiLCJ1c2VyLndyaXRlIiwidGFzay5yZWFkIiwidGFzay53cml0ZSIsIndlYmhvb2sucmVhZCIsIndlYmhvb2sud3JpdGUiLCJwcmVzZXQucmVhZCJdfQ.Neeg9MY65B2VeAqgNMlQL5guChXjVULxcUE50_tED2L0K4EUpuFXC9D1oki7s0tm6Gxq4WljnGc90gsk2Wh8lhjU6Q4_frGb20GO5Ygc6VAQ4g9ED77l7-91Fzco7YlVCfZHb7KutNUpdn_Vo0_l6LJhrqVeMztRhSwm7IbCtnfh2EG6RZB3fRh-GaGh3NAUQUFCNUSQ0Z4CudXUxELOmG5YGq0pNYgHTWUMIewnChvWS1ry-1BvdZpjveKewyTb8zAl3aJ-1of6zCDvp0mZVphNtKqU1UtRBZLWx1oJAbqmFhhxnEsChVOrdClNdcT51KuJyqEBb9yG3QRBRDjPWy_6J5eOyqBD39dwdIZrbZFRZQf8L0mKpopYTsidMoE2nZbzlrarcWRnbWnaygX0VtPeu_V3XbqDTUFF1q4LrHe_2rFXCJTLtyINd28-MP_MaNCQnn0NWAFxR_5KtOa-RRj-EXWM7Q6B2Q-oWSOZ1Qcgk8cErJ2RJ4QduujClpWja-4j46PS3zgWlbR_qopzn6qo5pxcazqkYe9cX98FoH9Gla_nhOF8aWnGnEQtpTfial7-omhMswVyU5nw7XYvviH8cfsxifJxSHCNlGE7uU9qIwtBlB-E4LSKI_XBxxc2eyMbWuGJNqHPP5500KsjcFkqtqAJnxm6533j0XIKJvM";
 
   // 1. Create job
   const jobRes = await fetch("https://api.cloudconvert.com/v2/jobs", {
@@ -567,19 +567,35 @@ async function convertFile(file, outputFormat) {
   });
 
   const job = await jobRes.json();
+  const jobId = job.data.id;
 
-  const uploadTask = job.data.tasks.find(t => t.name === "import-1");
+  // 2. WAIT for job to expose upload form
+  let uploadTask;
 
-  if (!uploadTask || !uploadTask.result) {
-    throw new Error("Upload task not ready");
+  for (let i = 0; i < 10; i++) {
+    const res = await fetch(`https://api.cloudconvert.com/v2/jobs/${jobId}`, {
+      headers: { "Authorization": "Bearer " + API_KEY }
+    });
+
+    const data = await res.json();
+
+    uploadTask = data.data.tasks.find(t => t.name === "import-1");
+
+    if (uploadTask?.result?.form) break;
+
+    await new Promise(r => setTimeout(r, 1000));
   }
 
-  // 2. Upload file
+  if (!uploadTask?.result?.form) {
+    throw new Error("Upload form never became available");
+  }
+
+  // 3. Upload file
   const formData = new FormData();
 
-  Object.entries(uploadTask.result.form.parameters).forEach(([k, v]) => {
+  for (const [k, v] of Object.entries(uploadTask.result.form.parameters)) {
     formData.append(k, v);
-  });
+  }
 
   formData.append("file", file);
 
@@ -592,26 +608,21 @@ async function convertFile(file, outputFormat) {
     throw new Error("Upload failed");
   }
 
-  // 3. Poll job
+  // 4. Poll job until finished
   let finished;
 
   while (true) {
-    const res = await fetch(
-      `https://api.cloudconvert.com/v2/jobs/${job.data.id}`,
-      {
-        headers: {
-          "Authorization": "Bearer " + API_KEY
-        }
-      }
-    );
+    const res = await fetch(`https://api.cloudconvert.com/v2/jobs/${jobId}`, {
+      headers: { "Authorization": "Bearer " + API_KEY }
+    });
 
     finished = await res.json();
 
-    if (finished.data.status === "finished") break;
+    const status = finished.data.status;
 
-    if (finished.data.status === "error") {
-      console.log("FULL ERROR:", finished);
+    if (status === "finished") break;
 
+    if (status === "error") {
       const failed = finished.data.tasks.find(t => t.status === "error");
       throw new Error(failed?.message || "CloudConvert failed");
     }
@@ -619,8 +630,12 @@ async function convertFile(file, outputFormat) {
     await new Promise(r => setTimeout(r, 1500));
   }
 
-  // 4. Export result
+  // 5. Extract export result
   const exportTask = finished.data.tasks.find(t => t.name === "export-1");
+
+  if (!exportTask?.result?.files) {
+    throw new Error("No export files returned");
+  }
 
   return exportTask.result.files;
 }
