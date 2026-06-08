@@ -578,7 +578,21 @@ if (!jobRes.ok) {
     const res = await fetch(`https://api.cloudconvert.com/v2/jobs/${jobId}`, {
       headers: { "Authorization": "Bearer " + API_KEY }
     });
+const jobRes = await fetch("https://api.cloudconvert.com/v2/jobs", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer " + API_KEY,
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify(payload)
+});
 
+if (!jobRes.ok) {
+  const errText = await jobRes.text();
+  throw new Error("Job creation failed: " + errText);
+}
+
+const job = await jobRes.json();
     const data = await res.json();
 
     uploadTask = data.data.tasks.find(t => t.name === "import-1");
