@@ -51,6 +51,29 @@
     const ffmpeg = createFFmpeg({ log: true });
   </script>
   <script>
+async function loadFFmpeg() {
+  const urls = [
+    "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/ffmpeg.min.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/ffmpeg/0.12.10/ffmpeg.min.js",
+    "https://esm.run/@ffmpeg/ffmpeg"
+  ];
+
+  for (const url of urls) {
+    try {
+      await import(url);
+      console.log("Loaded FFmpeg from:", url);
+      return;
+    } catch (e) {
+      console.warn("Failed:", url);
+    }
+  }
+
+  console.error("FFmpeg failed to load from all sources.");
+}
+
+loadFFmpeg();
+  </script>
+  <script>
     const fileInput = document.getElementById('fileInput');
     const audio = document.getElementById('audio');
     const addChapterBtn = document.getElementById('addChapter');
