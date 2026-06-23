@@ -1,115 +1,218 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>M4B Chapter Editor</title>
-<style>
-  body { font-family: sans-serif; max-width: 800px; margin: 20px auto; }
-  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  th, td { border: 1px solid #ccc; padding: 6px; }
-  input[type=text] { width: 100%; }
-  textarea { width: 100%; height: 150px; margin-top: 10px; }
-</style>
+  <meta charset="UTF-8">
+  <title>M4B Chapter Editor (FFmpeg.wasm)</title>
+  <style>
+    body { font-family: sans-serif; max-width: 900px; margin: 20px auto; }
+    h1 { font-size: 1.4rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 6px; font-size: 0.9rem; }
+    input[type=text] { width: 100%; box-sizing: border-box; }
+    textarea { width: 100%; height: 150px; margin-top: 10px; }
+    button { margin: 4px 4px 4px 0; }
+    #status { margin-top: 10px; font-size: 0.9rem; color: #444; }
+  </style>
 </head>
 <body>
+  <h1>M4B Chapter Editor (Browser + FFmpeg.wasm)</h1>
 
-<h2>M4B Chapter Editor</h2>
+  <p>
+    1. Load an audio file (m4a/mp3/etc).<br>
+    2. Play and add chapter markers.<br>
+    3. Click “Build M4B in browser” to get a real .m4b with chapters.
+  </p>
 
-<input type="file" id="fileInput" accept="audio/*"><br><br>
+  <input type="file" id="fileInput" accept="audio/*"><br><br>
 
-<audio id="audio" controls style="width:100%;"></audio><br><br>
+  <audio id="audio" controls style="width:100%;"></audio><br>
 
-<button id="addChapter" disabled>Add Chapter at Current Time</button>
-<button id="clearChapters" disabled>Clear Chapters</button>
+  <button id="addChapter" disabled>Add chapter at current time</button>
+  <button id="clearChapters" disabled>Clear chapters</button>
 
-<table>
-  <thead>
-    <tr><th>#</th><th>Time</th><th>Title</th><th>Delete</th></tr>
-  </thead>
-  <tbody id="chapterTable"></tbody>
-</table>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Time</th><th>Title</th><th>Delete</th></tr>
+    </thead>
+    <tbody id="chapterTable"></tbody>
+  </table>
 
-<button id="exportBtn" disabled>Export Chapters</button>
-<textarea id="output" readonly></textarea>
+  <button id="exportTxt" disabled>Export FFmpeg chapter text</button>
+  <button id="buildM4B" disabled>Build M4B in browser (FFmpeg.wasm)</button>
 
-<script>
-let chapters = [];
-const audio = document.getElementById("audio");
-const table = document.getElementById("chapterTable");
-const output = document.getElementById("output");
+  <textarea id="output" readonly placeholder="Exported FFmpeg chapter metadata will appear here..."></textarea>
 
-function formatTime(sec) {
-  sec = Math.floor(sec);
-  const h = String(Math.floor(sec/3600)).padStart(2,'0');
-  const m = String(Math.floor((sec%3600)/60)).padStart(2,'0');
-  const s = String(sec%60).padStart(2,'0');
-  return `${h}:${m}:${s}`;
-}
+  <div id="status"></div>
 
-function render() {
-  table.innerHTML = "";
-  chapters.forEach((ch, i) => {
-    const row = document.createElement("tr");
+  <!-- FFmpeg.wasm from CDN -->
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/ffmpeg.min.js"></script>
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const audio = document.getElementById('audio');
+    const addChapterBtn = document.getElementById('addChapter');
+    const clearChaptersBtn = document.getElementById('clearChapters');
+    const exportTxtBtn = document.getElementById('exportTxt');
+    const buildM4BBtn = document.getElementById('buildM4B');
+    const chapterTable = document.getElementById('chapterTable');
+    const output = document.getElementById('output');
+    const statusEl = document.getElementById('status');
 
-    row.innerHTML = `
-      <td>${i+1}</td>
-      <td>${formatTime(ch.time)}</td>
-      <td><input type="text" value="${ch.title}" data-index="${i}" class="titleInput"></td>
-      <td><button data-del="${i}">X</button></td>
-    `;
-    table.appendChild(row);
-  });
-}
+    let chapters = [];
+    let currentFile = null;
 
-document.getElementById("fileInput").addEventListener("change", e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  audio.src = URL.createObjectURL(file);
-  document.getElementById("addChapter").disabled = false;
-});
+    function formatTime(sec) {
+      sec = Math.floor(sec);
+      const h = String(Math.floor(sec / 3600)).padStart(2, '0');
+      const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+      const s = String(sec % 60).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
 
-document.getElementById("addChapter").addEventListener("click", () => {
-  chapters.push({ time: audio.currentTime, title: "Chapter " + (chapters.length+1) });
-  render();
-  document.getElementById("clearChapters").disabled = false;
-  document.getElementById("exportBtn").disabled = false;
-});
+    function renderChapters() {
+      chapterTable.innerHTML = '';
+      chapters
+        .sort((a, b) => a.time - b.time)
+        .forEach((ch, i) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${i + 1}</td>
+            <td>${formatTime(ch.time)}</td>
+            <td><input type="text" value="${ch.title}" data-index="${i}" class="titleInput"></td>
+            <td><button data-del="${i}">X</button></td>
+          `;
+          chapterTable.appendChild(tr);
+        });
+    }
 
-document.getElementById("clearChapters").addEventListener("click", () => {
-  chapters = [];
-  render();
-  output.value = "";
-  document.getElementById("exportBtn").disabled = true;
-});
+    function updateButtons() {
+      const hasAudio = !!audio.src;
+      addChapterBtn.disabled = !hasAudio;
+      clearChaptersBtn.disabled = chapters.length === 0;
+      exportTxtBtn.disabled = chapters.length === 0;
+      buildM4BBtn.disabled = chapters.length === 0 || !currentFile;
+    }
 
-table.addEventListener("input", e => {
-  if (e.target.classList.contains("titleInput")) {
-    const i = e.target.dataset.index;
-    chapters[i].title = e.target.value;
-  }
-});
+    fileInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      currentFile = file;
+      audio.src = URL.createObjectURL(file);
+      audio.load();
+      chapters = [];
+      renderChapters();
+      output.value = '';
+      statusEl.textContent = '';
+      updateButtons();
+    });
 
-table.addEventListener("click", e => {
-  if (e.target.dataset.del !== undefined) {
-    chapters.splice(e.target.dataset.del, 1);
-    render();
-  }
-});
+    addChapterBtn.addEventListener('click', () => {
+      if (!audio.duration) return;
+      chapters.push({
+        time: audio.currentTime,
+        title: 'Chapter ' + (chapters.length + 1)
+      });
+      renderChapters();
+      updateButtons();
+    });
 
-document.getElementById("exportBtn").addEventListener("click", () => {
-  let txt = ";FFmpeg chapters\n";
-  chapters.sort((a,b)=>a.time-b.time);
-  chapters.forEach((ch, i) => {
-    const start = Math.floor(ch.time * 1000);
-    const end = (i < chapters.length-1)
-      ? Math.floor(chapters[i+1].time * 1000)
-      : Math.floor(audio.duration * 1000);
+    clearChaptersBtn.addEventListener('click', () => {
+      if (!confirm('Clear all chapters?')) return;
+      chapters = [];
+      renderChapters();
+      output.value = '';
+      updateButtons();
+    });
 
-    txt += `[CHAPTER]\nTIMEBASE=1/1000\nSTART=${start}\nEND=${end}\ntitle=${ch.title}\n`;
-  });
-  output.value = txt;
-});
-</script>
+    chapterTable.addEventListener('input', e => {
+      if (e.target.classList.contains('titleInput')) {
+        const i = e.target.dataset.index;
+        chapters[i].title = e.target.value;
+      }
+    });
 
+    chapterTable.addEventListener('click', e => {
+      if (e.target.dataset.del !== undefined) {
+        const i = parseInt(e.target.dataset.del, 10);
+        chapters.splice(i, 1);
+        renderChapters();
+        updateButtons();
+      }
+    });
+
+    function buildChapterText() {
+      let txt = ';FFmpeg chapters\n';
+      const sorted = [...chapters].sort((a, b) => a.time - b.time);
+      sorted.forEach((ch, i) => {
+        const start = Math.floor(ch.time * 1000);
+        const end = (i < sorted.length - 1)
+          ? Math.floor(sorted[i + 1].time * 1000)
+          : Math.floor(audio.duration * 1000);
+        txt += `[CHAPTER]\nTIMEBASE=1/1000\nSTART=${start}\nEND=${end}\n`;
+        txt += `title=${ch.title}\n`;
+      });
+      return txt;
+    }
+
+    exportTxtBtn.addEventListener('click', () => {
+      output.value = buildChapterText();
+    });
+
+    // FFmpeg.wasm integration
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    const ffmpeg = createFFmpeg({ log: true });
+
+    async function ensureFFmpegLoaded() {
+      if (!ffmpeg.isLoaded()) {
+        statusEl.textContent = 'Loading FFmpeg.wasm (first time may take a bit)...';
+        await ffmpeg.load();
+        statusEl.textContent = 'FFmpeg.wasm loaded.';
+      }
+    }
+
+    buildM4BBtn.addEventListener('click', async () => {
+      if (!currentFile || chapters.length === 0) return;
+
+      try {
+        await ensureFFmpegLoaded();
+        statusEl.textContent = 'Preparing files in virtual FS...';
+
+        const inputName = 'input.' + (currentFile.name.split('.').pop() || 'm4a');
+        const chapterName = 'chapters.txt';
+        const outputName = 'output.m4b';
+
+        ffmpeg.FS('writeFile', inputName, await fetchFile(currentFile));
+        ffmpeg.FS('writeFile', chapterName, new TextEncoder().encode(buildChapterText()));
+
+        statusEl.textContent = 'Running FFmpeg (this may take a while for big files)...';
+
+        await ffmpeg.run(
+          '-i', inputName,
+          '-i', chapterName,
+          '-map_metadata', '1',
+          '-codec', 'copy',
+          outputName
+        );
+
+        statusEl.textContent = 'Reading output file...';
+
+        const data = ffmpeg.FS('readFile', outputName);
+        const blob = new Blob([data.buffer], { type: 'audio/mp4' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        const base = currentFile.name.replace(/\.[^.]+$/, '');
+        a.download = base + '_chapters.m4b';
+        a.click();
+
+        statusEl.textContent = 'Done. Downloaded ' + a.download;
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = 'Error: ' + err;
+      }
+    });
+
+    updateButtons();
+  </script>
 </body>
 </html>
